@@ -50,8 +50,15 @@ export class BackendManager extends EventEmitter {
       const dir = path.join(this.opts.resourcesPath, 'backend')
       return { cmd: path.join(dir, 'oracle-engine.exe'), args, cwd: dir }
     }
-    const python = process.env.ORACLE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3')
-    return { cmd: python, args: ['-m', 'engine.api.server', ...args], cwd: this.opts.repoRoot }
+    const serverArgs = ['-m', 'engine.api.server', ...args]
+    const explicit = process.env.ORACLE_PYTHON
+    if (explicit) return { cmd: explicit, args: serverArgs, cwd: this.opts.repoRoot }
+    // Prefer the project's own virtual environment so the app does not depend on PATH or on the
+    // Microsoft Store "python" alias that Windows ships.
+    const venv = process.platform === 'win32' ? path.join(this.opts.repoRoot, '.venv', 'Scripts', 'python.exe') : path.join(this.opts.repoRoot, '.venv', 'bin', 'python')
+    if (fs.existsSync(venv)) return { cmd: venv, args: serverArgs, cwd: this.opts.repoRoot }
+    if (process.platform === 'win32') return { cmd: 'py', args: ['-3', ...serverArgs], cwd: this.opts.repoRoot } // Python launcher
+    return { cmd: 'python3', args: serverArgs, cwd: this.opts.repoRoot }
   }
 
   start(): Promise<Connection> {
@@ -107,7 +114,10 @@ export class BackendManager extends EventEmitter {
         if (this.proc === child) this.proc = null
         this.conn = null
         if (this.quitting) return
-        const detail = `Engine exited (code ${code})${tail ? `: ${tail.trim().split('\n').slice(-2).join(' ')}` : ''}`
+        const missingPython = process.platform === 'win32' && !this.opts.packaged && (code === 9009 || code === 9)
+        const detail = missingPython
+          ? 'Python was not found. Run the setup steps in the README (python -m venv .venv, then pip install -e ".[dev]") from the project folder, then press Try again.'
+          : `Engine exited (code ${code})${tail ? `: ${tail.trim().split('\n').slice(-2).join(' ')}` : ''}`
         fail(new Error(detail))
         if (this.restarts < MAX_RESTARTS) {
           this.restarts += 1
