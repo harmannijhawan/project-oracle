@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+dist/
+dist-electron/
+release/
+build/
+*.spec.bak
+models/*.task
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+backend-dist/
